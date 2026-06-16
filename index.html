@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Распознаватель жестов v4</title>
+    <style>
+        body { text-align: center; font-family: sans-serif; background: #222; color: #fff; padding: 20px; }
+        #video { width: 100%; max-width: 400px; transform: scaleX(-1); border-radius: 10px; border: 2px solid #555; background: #000; }
+        #status { font-size: 24px; font-weight: bold; margin: 20px; color: #ffcc00; }
+        .btn-container { display: flex; gap: 10px; justify-content: center; }
+        button { padding: 15px; border-radius: 8px; border: none; cursor: pointer; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+</head>
+<body>
+
+    <h1>Распознавание жестов</h1>
+    <video id="video" autoplay playsinline muted></video>
+    <div id="status">Нажмите "ВКЛЮЧИТЬ"</div>
+    <div class="btn-container">
+        <button id="btnStart" style="background:#007bff; color:white;">ВКЛЮЧИТЬ</button>
+        <button id="btnSave" style="background:#28a745; color:white;">Запомнить жест</button>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const status = document.getElementById('status');
+        let gestures = JSON.parse(localStorage.getItem('myGestures')) || {};
+        let currentCode = "";
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1 });
+
+        // Умная логика пальцев
+        function getCode(landmarks) {
+            const tips = [4, 8, 12, 16, 20];
+            const mcp = [2, 5, 9, 13, 17];
+            
+            return tips.map((t, i) => {
+                if (i === 0) { // Большой палец (сравниваем с точкой 5)
+                    return Math.hypot(landmarks[4].x - landmarks[5].x, landmarks[4].y - landmarks[5].y) > 0.05 ? "1" : "0";
+                } else { // Остальные пальцы
+                    return Math.hypot(landmarks[t].x - landmarks[0].x, landmarks[t].y - landmarks[0].y) > 
+                           Math.hypot(landmarks[mcp[i]].x - landmarks[0].x, landmarks[mcp[i]].y - landmarks[0].y) ? "1" : "0";
+                }
+            }).join("");
+        }
+
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                currentCode = getCode(results.multiHandLandmarks[0]);
+                status.innerText = gestures[currentCode] ? "Жест: " + gestures[currentCode] : "Код: " + currentCode;
+            } else {
+                status.innerText = "Покажите руку...";
+            }
+        });
+
+        document.getElementById('btnStart').onclick = async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            async function detect() {
+                if (video.readyState === 4) await hands.send({image: video});
+                requestAnimationFrame(detect);
+            }
+            detect();
+        };
+
+        document.getElementById('btnSave').onclick = () => {
+            const name = prompt("Как назвать жест с кодом " + currentCode + "?");
+            if (name) {
+                gestures[currentCode] = name;
+                localStorage.setItem('myGestures', JSON.stringify(gestures));
+                alert("Сохранено!");
+            }
+        };
+    </script>
+</body>
+</html>
